@@ -23,8 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeapi "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/features"
-	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
+	"k8s.io/kubernetes/pkg/apis/scheduling"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/test/e2e/framework"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -40,14 +39,10 @@ const (
 	bestEffortPodName = "best-effort"
 )
 
-var _ = framework.KubeDescribe("CriticalPod [Serial] [Disruptive]", func() {
+var _ = framework.KubeDescribe("CriticalPod [Serial] [Disruptive] [NodeFeature:CriticalPod]", func() {
 	f := framework.NewDefaultFramework("critical-pod-test")
 
 	Context("when we need to admit a critical pod", func() {
-		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
-			initialConfig.FeatureGates[string(features.ExperimentalCriticalPodAnnotation)] = true
-		})
-
 		It("should be able to create and delete a critical pod", func() {
 			configEnabled, err := isKubeletConfigEnabled(f)
 			framework.ExpectNoError(err)
@@ -131,7 +126,7 @@ func getTestPod(critical bool, name string, resources v1.ResourceRequirements) *
 			Containers: []v1.Container{
 				{
 					Name:      "container",
-					Image:     imageutils.GetPauseImageNameForHostArch(),
+					Image:     imageutils.GetPauseImageName(),
 					Resources: resources,
 				},
 			},
@@ -139,9 +134,8 @@ func getTestPod(critical bool, name string, resources v1.ResourceRequirements) *
 	}
 	if critical {
 		pod.ObjectMeta.Namespace = kubeapi.NamespaceSystem
-		pod.ObjectMeta.Annotations = map[string]string{
-			kubelettypes.CriticalPodAnnotationKey: "",
-		}
+		pod.ObjectMeta.Annotations = map[string]string{}
+		pod.Spec.PriorityClassName = scheduling.SystemClusterCritical
 		Expect(kubelettypes.IsCriticalPod(pod)).To(BeTrue(), "pod should be a critical pod")
 	} else {
 		Expect(kubelettypes.IsCriticalPod(pod)).To(BeFalse(), "pod should not be a critical pod")

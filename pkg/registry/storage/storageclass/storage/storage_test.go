@@ -25,13 +25,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistrytest "k8s.io/apiserver/pkg/registry/generic/testing"
-	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
+	etcd3testing "k8s.io/apiserver/pkg/storage/etcd3/testing"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	storageapi "k8s.io/kubernetes/pkg/apis/storage"
 	"k8s.io/kubernetes/pkg/registry/registrytest"
 )
 
-func newStorage(t *testing.T) (*REST, *etcdtesting.EtcdTestServer) {
+func newStorage(t *testing.T) (*REST, *etcd3testing.EtcdTestServer) {
 	etcdStorage, server := registrytest.NewEtcdStorage(t, storageapi.GroupName)
 	restOptions := generic.RESTOptions{
 		StorageConfig:           etcdStorage,
@@ -45,6 +45,7 @@ func newStorage(t *testing.T) (*REST, *etcdtesting.EtcdTestServer) {
 
 func validNewStorageClass(name string) *storageapi.StorageClass {
 	deleteReclaimPolicy := api.PersistentVolumeReclaimDelete
+	bindingMode := storageapi.VolumeBindingImmediate
 	return &storageapi.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -53,7 +54,8 @@ func validNewStorageClass(name string) *storageapi.StorageClass {
 		Parameters: map[string]string{
 			"foo": "bar",
 		},
-		ReclaimPolicy: &deleteReclaimPolicy,
+		ReclaimPolicy:     &deleteReclaimPolicy,
+		VolumeBindingMode: &bindingMode,
 	}
 }
 

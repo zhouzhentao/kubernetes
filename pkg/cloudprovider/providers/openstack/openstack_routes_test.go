@@ -24,7 +24,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/cloudprovider"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
 func TestRoutes(t *testing.T) {
@@ -40,9 +40,17 @@ func TestRoutes(t *testing.T) {
 		t.Fatalf("Failed to construct/authenticate OpenStack: %s", err)
 	}
 
+	vms := getServers(os)
+	_, err = os.InstanceID()
+	if err != nil || len(vms) == 0 {
+		t.Skipf("Please run this test in an OpenStack vm or create at least one VM in OpenStack before you run this test.")
+	}
+
+	// We know we have at least one vm.
+	servername := vms[0].Name
+
 	// Pick the first router and server to try a test with
 	os.routeOpts.RouterID = getRouters(os)[0].ID
-	servername := getServers(os)[0].Name
 
 	r, ok := os.Routes()
 	if !ok {
@@ -79,6 +87,9 @@ func TestRoutes(t *testing.T) {
 
 func getServers(os *OpenStack) []servers.Server {
 	c, err := os.NewComputeV2()
+	if err != nil {
+		panic(err)
+	}
 	allPages, err := servers.List(c, servers.ListOpts{}).AllPages()
 	if err != nil {
 		panic(err)

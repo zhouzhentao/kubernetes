@@ -1,8 +1,11 @@
 package(default_visibility = ["//visibility:public"])
 
 load(
+    "//build:go.bzl",
+    go_binary = "go_binary_conditional_pure",
+)
+load(
     "@io_bazel_rules_go//go:def.bzl",
-    "go_binary",
     "go_library",
     "go_test",
 )
@@ -10,7 +13,6 @@ load(
 go_binary(
     name = "genkubedocs",
     embed = [":go_default_library"],
-    importpath = "k8s.io/kubernetes/cmd/genkubedocs",
 )
 
 go_library(
@@ -52,5 +54,4 @@ go_test(
     name = "go_default_test",
     srcs = ["postprocessing_test.go"],
     embed = [":go_default_library"],
-    importpath = "k8s.io/kubernetes/cmd/genkubedocs",
 )

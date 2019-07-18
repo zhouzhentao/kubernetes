@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/utils/pointer"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -35,52 +36,48 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authentication/user"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/kube-aggregator/pkg/apis/apiregistration"
+	apiregistration "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 )
 
 type targetHTTPHandler struct {
 	called  bool
 	headers map[string][]string
 	path    string
+	host    string
 }
 
 func (d *targetHTTPHandler) Reset() {
 	d.path = ""
 	d.called = false
 	d.headers = nil
+	d.host = ""
 }
 
 func (d *targetHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.path = r.URL.Path
 	d.called = true
 	d.headers = r.Header
+	d.host = r.Host
 	w.WriteHeader(http.StatusOK)
 }
 
-type fakeRequestContextMapper struct {
-	user user.Info
-}
-
-func (m *fakeRequestContextMapper) Get(req *http.Request) (genericapirequest.Context, bool) {
-	ctx := genericapirequest.NewContext()
-	if m.user != nil {
-		ctx = genericapirequest.WithUser(ctx, m.user)
-	}
-
-	resolver := &genericapirequest.RequestInfoFactory{
-		APIPrefixes:          sets.NewString("api", "apis"),
-		GrouplessAPIPrefixes: sets.NewString("api"),
-	}
-	info, err := resolver.NewRequestInfo(req)
-	if err == nil {
-		ctx = genericapirequest.WithRequestInfo(ctx, info)
-	}
-
-	return ctx, true
-}
-
-func (*fakeRequestContextMapper) Update(req *http.Request, context genericapirequest.Context) error {
-	return nil
+func contextHandler(handler http.Handler, user user.Info) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		if user != nil {
+			ctx = genericapirequest.WithUser(ctx, user)
+		}
+		resolver := &genericapirequest.RequestInfoFactory{
+			APIPrefixes:          sets.NewString("api", "apis"),
+			GrouplessAPIPrefixes: sets.NewString("api"),
+		}
+		info, err := resolver.NewRequestInfo(req)
+		if err == nil {
+			ctx = genericapirequest.WithRequestInfo(ctx, info)
+		}
+		req = req.WithContext(ctx)
+		handler.ServeHTTP(w, req)
+	})
 }
 
 type mockedRouter struct {
@@ -88,7 +85,7 @@ type mockedRouter struct {
 	err             error
 }
 
-func (r *mockedRouter) ResolveEndpoint(namespace, name string) (*url.URL, error) {
+func (r *mockedRouter) ResolveEndpoint(namespace, name string, port int32) (*url.URL, error) {
 	return &url.URL{Scheme: "https", Host: r.destinationHost}, r.err
 }
 
@@ -122,7 +119,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service: &apiregistration.ServiceReference{},
+					Service: &apiregistration.ServiceReference{Port: pointer.Int32Ptr(443)},
 					Group:   "foo",
 					Version: "v1",
 				},
@@ -144,7 +141,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service:               &apiregistration.ServiceReference{},
+					Service:               &apiregistration.ServiceReference{Port: pointer.Int32Ptr(443)},
 					Group:                 "foo",
 					Version:               "v1",
 					InsecureSkipTLSVerify: true,
@@ -176,7 +173,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns"},
+					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns", Port: pointer.Int32Ptr(443)},
 					Group:    "foo",
 					Version:  "v1",
 					CABundle: testCACrt,
@@ -208,7 +205,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns"},
+					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns", Port: pointer.Int32Ptr(443)},
 					Group:    "foo",
 					Version:  "v1",
 					CABundle: testCACrt,
@@ -231,7 +228,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service:  &apiregistration.ServiceReference{Name: "bad-service", Namespace: "test-ns"},
+					Service:  &apiregistration.ServiceReference{Name: "bad-service", Namespace: "test-ns", Port: pointer.Int32Ptr(443)},
 					Group:    "foo",
 					Version:  "v1",
 					CABundle: testCACrt,
@@ -253,7 +250,7 @@ func TestProxyHandler(t *testing.T) {
 			apiService: &apiregistration.APIService{
 				ObjectMeta: metav1.ObjectMeta{Name: "v1.foo"},
 				Spec: apiregistration.APIServiceSpec{
-					Service: &apiregistration.ServiceReference{},
+					Service: &apiregistration.ServiceReference{Port: pointer.Int32Ptr(443)},
 					Group:   "foo",
 					Version: "v1",
 				},
@@ -280,8 +277,7 @@ func TestProxyHandler(t *testing.T) {
 				serviceResolver: serviceResolver,
 				proxyTransport:  &http.Transport{},
 			}
-			handler.contextMapper = &fakeRequestContextMapper{user: tc.user}
-			server := httptest.NewServer(handler)
+			server := httptest.NewServer(contextHandler(handler, tc.user))
 			defer server.Close()
 
 			if tc.apiService != nil {
@@ -321,6 +317,10 @@ func TestProxyHandler(t *testing.T) {
 				t.Errorf("%s: expected %v, got %v", name, e, a)
 				return
 			}
+			if e, a := targetServer.Listener.Addr().String(), target.host; tc.expectedCalled && !reflect.DeepEqual(e, a) {
+				t.Errorf("%s: expected %v, got %v", name, e, a)
+				return
+			}
 		}()
 	}
 }
@@ -337,7 +337,7 @@ func TestProxyUpgrade(t *testing.T) {
 					CABundle: testCACrt,
 					Group:    "mygroup",
 					Version:  "v1",
-					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns"},
+					Service:  &apiregistration.ServiceReference{Name: "test-service", Namespace: "test-ns", Port: pointer.Int32Ptr(443)},
 				},
 				Status: apiregistration.APIServiceStatus{
 					Conditions: []apiregistration.APIServiceCondition{
@@ -352,9 +352,9 @@ func TestProxyUpgrade(t *testing.T) {
 			APIService: &apiregistration.APIService{
 				Spec: apiregistration.APIServiceSpec{
 					InsecureSkipTLSVerify: true,
-					Group:   "mygroup",
-					Version: "v1",
-					Service: &apiregistration.ServiceReference{Name: "invalid-service", Namespace: "invalid-ns"},
+					Group:                 "mygroup",
+					Version:               "v1",
+					Service:               &apiregistration.ServiceReference{Name: "invalid-service", Namespace: "invalid-ns", Port: pointer.Int32Ptr(443)},
 				},
 				Status: apiregistration.APIServiceStatus{
 					Conditions: []apiregistration.APIServiceCondition{
@@ -371,7 +371,7 @@ func TestProxyUpgrade(t *testing.T) {
 					CABundle: testCACrt,
 					Group:    "mygroup",
 					Version:  "v1",
-					Service:  &apiregistration.ServiceReference{Name: "invalid-service", Namespace: "invalid-ns"},
+					Service:  &apiregistration.ServiceReference{Name: "invalid-service", Namespace: "invalid-ns", Port: pointer.Int32Ptr(443)},
 				},
 				Status: apiregistration.APIServiceStatus{
 					Conditions: []apiregistration.APIServiceCondition{
@@ -400,12 +400,12 @@ func TestProxyUpgrade(t *testing.T) {
 			}))
 
 			backendServer := httptest.NewUnstartedServer(backendHandler)
-			if cert, err := tls.X509KeyPair(svcCrt, svcKey); err != nil {
+			cert, err := tls.X509KeyPair(svcCrt, svcKey)
+			if err != nil {
 				t.Errorf("https (valid hostname): %v", err)
 				return
-			} else {
-				backendServer.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 			}
+			backendServer.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 			backendServer.StartTLS()
 			defer backendServer.Close()
 
@@ -417,12 +417,11 @@ func TestProxyUpgrade(t *testing.T) {
 
 			serverURL, _ := url.Parse(backendServer.URL)
 			proxyHandler := &proxyHandler{
-				contextMapper:   &fakeRequestContextMapper{user: &user.DefaultInfo{Name: "username"}},
 				serviceResolver: &mockedRouter{destinationHost: serverURL.Host},
 				proxyTransport:  &http.Transport{},
 			}
 			proxyHandler.updateAPIService(tc.APIService)
-			aggregator := httptest.NewServer(proxyHandler)
+			aggregator := httptest.NewServer(contextHandler(proxyHandler, &user.DefaultInfo{Name: "username"}))
 			defer aggregator.Close()
 
 			ws, err := websocket.Dial("ws://"+aggregator.Listener.Addr().String()+path, "", "http://127.0.0.1/")

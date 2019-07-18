@@ -5,7 +5,7 @@
   "name":"kube-apiserver",
   "namespace": "kube-system",
   "annotations": {
-    "scheduler.alpha.kubernetes.io/critical-pod": ""
+    "seccomp.security.alpha.kubernetes.io/pod": "docker/default"
   },
   "labels": {
     "tier": "control-plane",
@@ -13,6 +13,7 @@
   }
 },
 "spec":{
+"priorityClass": "system-node-critical",
 "hostNetwork": true,
 "containers":[
     {
@@ -31,22 +32,33 @@
     {{container_env}}
     "livenessProbe": {
       "httpGet": {
+        "scheme": "HTTPS",
         "host": "127.0.0.1",
-        "port": 8080,
-        "path": "/healthz"
+        "port": {{secure_port}},
+        "path": "/healthz?exclude=etcd"
       },
       "initialDelaySeconds": {{liveness_probe_initial_delay}},
       "timeoutSeconds": 15
     },
+    "readinessProbe": {
+      "httpGet": {
+        "scheme": "HTTPS",
+        "host": "127.0.0.1",
+        "port": {{secure_port}},
+        "path": "/healthz"
+      },
+      "periodSeconds": 1,
+      "timeoutSeconds": 15
+    },
     "ports":[
+      {{insecure_port_mapping}}
       { "name": "https",
-        "containerPort": {{secure_port}},
-        "hostPort": {{secure_port}}},{
-       "name": "local",
-        "containerPort": 8080,
-        "hostPort": 8080}
-        ],
+      "containerPort": {{secure_port}},
+      "hostPort": {{secure_port}}}
+    ],
     "volumeMounts": [
+        {{kms_socket_mount}}
+        {{encryption_provider_mount}}
         {{cloud_config_mount}}
         {{additional_cloud_config_mount}}
         {{webhook_config_mount}}
@@ -56,7 +68,7 @@
         {{admission_controller_config_mount}}
         {{image_policy_webhook_config_mount}}
         { "name": "srvkube",
-        "mountPath": "{{srv_kube_path}}",
+        "mountPath": "/etc/srv/kubernetes",
         "readOnly": true},
         { "name": "logfile",
         "mountPath": "/var/log/kube-apiserver.log",
@@ -86,6 +98,8 @@
     }
 ],
 "volumes":[
+  {{kms_socket_volume}}
+  {{encryption_provider_volume}}
   {{cloud_config_volume}}
   {{additional_cloud_config_volume}}
   {{webhook_config_volume}}
@@ -96,7 +110,7 @@
   {{image_policy_webhook_config_volume}}
   { "name": "srvkube",
     "hostPath": {
-        "path": "{{srv_kube_path}}"}
+        "path": "/etc/srv/kubernetes"}
   },
   { "name": "logfile",
     "hostPath": {

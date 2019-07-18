@@ -14,12 +14,14 @@
 
 .PHONY:	build push
 
-PREFIX = staging-k8s.gcr.io
-IMAGE = fluentd-elasticsearch
-TAG = v2.0.4
+PREFIX = quay.io/fluentd_elasticsearch
+IMAGE = fluentd
+TAG = v2.6.0
 
 build:
-	docker build --pull -t $(PREFIX)/$(IMAGE):$(TAG) .
+	docker build  --tag ${PREFIX}/${IMAGE}:${TAG} .
 
 push:
-	gcloud docker -- push $(PREFIX)/$(IMAGE):$(TAG)
+	docker push ${PREFIX}/${IMAGE}:${TAG}
+	docker push ${PREFIX}/${IMAGE}:latest
+	

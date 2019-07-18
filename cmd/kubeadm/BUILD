@@ -5,12 +5,11 @@ load(
     "go_binary",
     "go_library",
 )
-load("//pkg/version:def.bzl", "version_x_defs")
+load("//cmd/kubeadm/app/version:def.bzl", "version_x_defs")
 
 go_binary(
     name = "kubeadm",
     embed = [":go_default_library"],
-    importpath = "k8s.io/kubernetes/cmd/kubeadm",
     pure = "on",
     x_defs = version_x_defs(),
 )

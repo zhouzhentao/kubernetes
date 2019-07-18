@@ -21,8 +21,8 @@ all: container
 container:
 	docker build --pull -t ${REGISTRY}/${IMAGE}:${TAG} .
 
-push: 
-	gcloud docker -- push ${REGISTRY}/${IMAGE}:${TAG}
+push:
+	docker push ${REGISTRY}/${IMAGE}:${TAG}
 
 upload:
 	./stage-upload.sh ${TAG} ${REGISTRY}/${IMAGE}:${TAG}

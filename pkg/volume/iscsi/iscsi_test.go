@@ -175,15 +175,8 @@ func doTestPlugin(t *testing.T, spec *volume.Spec) {
 		t.Errorf("Unexpected path, expected %q, got: %q", expectedPath, path)
 	}
 
-	if err := mounter.SetUp(nil); err != nil {
+	if err := mounter.SetUp(volume.MounterArgs{}); err != nil {
 		t.Errorf("Expected success, got: %v", err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			t.Errorf("SetUp() failed, volume path not created: %s", path)
-		} else {
-			t.Errorf("SetUp() failed: %v", err)
-		}
 	}
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -495,8 +488,8 @@ func TestGetISCSICHAP(t *testing.T) {
 			expectedError:         nil,
 		},
 		{
-			name: "no volume",
-			spec: &volume.Spec{},
+			name:                  "no volume",
+			spec:                  &volume.Spec{},
 			expectedDiscoveryCHAP: false,
 			expectedSessionCHAP:   false,
 			expectedError:         fmt.Errorf("Spec does not reference an ISCSI volume type"),

@@ -114,65 +114,27 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestIsCriticalPod(t *testing.T) {
-	cases := []struct {
-		pod      v1.Pod
-		expected bool
+func TestIsCriticalPodBasedOnPriority(t *testing.T) {
+	tests := []struct {
+		priority    int32
+		description string
+		expected    bool
 	}{
 		{
-			pod: v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pod1",
-					Namespace: "ns",
-					Annotations: map[string]string{
-						"scheduler.alpha.kubernetes.io/critical-pod": "",
-					},
-				},
-			},
-			expected: false,
+			priority:    int32(2000000001),
+			description: "A system critical pod",
+			expected:    true,
 		},
 		{
-			pod: v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pod2",
-					Namespace: "ns",
-					Annotations: map[string]string{
-						"scheduler.alpha.kubernetes.io/critical-pod": "abc",
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			pod: v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pod3",
-					Namespace: "kube-system",
-					Annotations: map[string]string{
-						"scheduler.alpha.kubernetes.io/critical-pod": "abc",
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			pod: v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pod3",
-					Namespace: "kube-system",
-					Annotations: map[string]string{
-						"scheduler.alpha.kubernetes.io/critical-pod": "",
-					},
-				},
-			},
-			expected: true,
+			priority:    int32(1000000000),
+			description: "A non system critical pod",
+			expected:    false,
 		},
 	}
-	for i, data := range cases {
-		actual := IsCriticalPod(&data.pod)
-		if actual != data.expected {
-			t.Errorf("IsCriticalPod result wrong:\nexpected: %v\nactual: %v for test[%d] with Annotations: %v",
-				data.expected, actual, i, data.pod.Annotations)
+	for _, test := range tests {
+		actual := IsCriticalPodBasedOnPriority(test.priority)
+		if actual != test.expected {
+			t.Errorf("IsCriticalPodBased on priority should have returned %v for test %v but got %v", test.expected, test.description, actual)
 		}
 	}
 }
